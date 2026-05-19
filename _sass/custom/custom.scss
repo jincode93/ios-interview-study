@@ -1,0 +1,257 @@
+// ──────────────────────────────────────
+// Layout: wider content area
+// ──────────────────────────────────────
+.main-content-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+@media (min-width: 1200px) {
+  .side-bar {
+    width: 260px;
+  }
+  .main {
+    margin-left: 260px;
+  }
+}
+
+// ──────────────────────────────────────
+// Typography
+// ──────────────────────────────────────
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Pretendard", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #2d3748;
+  line-height: 1.8;
+}
+
+.main-content {
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1a202c;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e2e8f0;
+    margin-top: 2.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    background: linear-gradient(135deg, #f0f4ff 0%, #f7f8fc 100%);
+    border-left: 4px solid #4a7cf7;
+    border-radius: 0 6px 6px 0;
+  }
+
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #4a5568;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p {
+    margin-bottom: 0.75rem;
+    font-size: 0.95rem;
+    color: #374151;
+  }
+
+  li {
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+  }
+
+  > blockquote {
+    border-left: 3px solid #a0aec0;
+    background: #f9fafb;
+    padding: 0.75rem 1rem;
+    border-radius: 0 6px 6px 0;
+    color: #4a5568;
+    font-size: 0.9rem;
+    margin: 1rem 0;
+  }
+}
+
+// ──────────────────────────────────────
+// Interview answer blocks (💬)
+// ──────────────────────────────────────
+.main-content h3:has(+ p),
+.main-content h3 {
+  &:first-of-type {
+    margin-top: 1rem;
+  }
+}
+
+// Style the 💬 면접 답변 sections
+.main-content h3:nth-of-type(3n+1) + p,
+.main-content h3:nth-of-type(3n+1) ~ p:first-of-type {
+  color: #1e3a5f;
+}
+
+// ──────────────────────────────────────
+// Code blocks
+// ──────────────────────────────────────
+code {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, monospace;
+  font-size: 0.82rem;
+}
+
+p > code,
+li > code,
+td > code {
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.84rem;
+  border: 1px solid #e0e7ff;
+}
+
+div.highlighter-rouge,
+figure.highlight {
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1rem 0;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  pre {
+    padding: 1rem 1.25rem;
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    background: #f8fafc;
+    overflow-x: auto;
+  }
+}
+
+// ──────────────────────────────────────
+// Tables
+// ──────────────────────────────────────
+.main-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.88rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  th {
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 600;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 2px solid #e2e8f0;
+    text-align: left;
+  }
+
+  td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #475569;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: #f8fafc;
+  }
+}
+
+// ──────────────────────────────────────
+// Sidebar
+// ──────────────────────────────────────
+.side-bar {
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+
+  .site-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+}
+
+.nav-list .nav-list-item {
+  font-size: 0.88rem;
+
+  .nav-list-link {
+    padding: 0.4rem 1rem;
+    color: #475569;
+    border-radius: 6px;
+    margin: 1px 0.5rem;
+
+    &:hover {
+      background: #eef2ff;
+      color: #4a7cf7;
+    }
+
+    &.active {
+      background: #e0e7ff;
+      color: #3730a3;
+      font-weight: 600;
+    }
+  }
+}
+
+// ──────────────────────────────────────
+// Horizontal rules
+// ──────────────────────────────────────
+.main-content hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #cbd5e1, transparent);
+  margin: 2rem 0;
+}
+
+// ──────────────────────────────────────
+// Strong text
+// ──────────────────────────────────────
+.main-content strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+// ──────────────────────────────────────
+// Search
+// ──────────────────────────────────────
+.search-input {
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.88rem;
+
+  &:focus {
+    border-color: #4a7cf7;
+    box-shadow: 0 0 0 3px rgba(74, 124, 247, 0.1);
+  }
+}
+
+// ──────────────────────────────────────
+// Responsive
+// ──────────────────────────────────────
+@media (max-width: 768px) {
+  .main-content {
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.15rem; }
+    p, li { font-size: 0.9rem; }
+  }
+
+  .main-content-wrap {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
