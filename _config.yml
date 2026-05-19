@@ -1,0 +1,28 @@
+title: iOS 면접 준비
+description: iOS 개발자 면접 질문 & 답변 모음
+theme: just-the-docs
+
+url: ""
+baseurl: "/ios-interview-study"
+
+search_enabled: true
+search.heading_level: 3
+
+heading_anchor: true
+
+nav_order: 1
+
+back_to_top: true
+back_to_top_text: "맨 위로"
+
+footer_content: "iOS 면접 준비 학습 사이트"
+
+color_scheme: light
+
+callouts:
+  interview:
+    title: 면접 답변
+    color: blue
+  detail:
+    title: 보충 설명
+    color: green
