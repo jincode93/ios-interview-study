@@ -146,11 +146,19 @@ figure.highlight pre code,
 .highlight .err { color: #ff5370 !important; background: transparent !important; }
 
 /* Tables */
+.main-content .table-wrapper {
+  display: block;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  box-shadow: none;
+  overflow-x: auto;
+}
+
 .main-content table {
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  margin: 1rem 0;
+  margin: 0;
   font-size: 0.88rem;
   border-radius: 8px;
   overflow: hidden;
@@ -226,15 +234,27 @@ figure.highlight pre code,
 }
 
 /* Search */
+.main-header {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+}
+
 .search-input {
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border-radius: 8px !important;
+  border: 1px solid #e2e8f0 !important;
   font-size: 0.88rem;
+  background-color: #f8fafc !important;
+  width: 100% !important;
 }
 
 .search-input:focus {
-  border-color: #4a7cf7;
-  box-shadow: 0 0 0 3px rgba(74, 124, 247, 0.1);
+  border-color: #4a7cf7 !important;
+  box-shadow: 0 0 0 3px rgba(74, 124, 247, 0.1) !important;
+  background-color: #fff !important;
 }
 
 /* Responsive */
