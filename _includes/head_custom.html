@@ -264,4 +264,185 @@ figure.highlight pre code,
   .main-content p, .main-content li { font-size: 0.9rem; }
   .main-content-wrap { padding-left: 1rem; padding-right: 1rem; }
 }
+
+/* Korean search results */
+#kr-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 1000;
+  display: none;
+}
+
+#kr-search-results .kr-result-item {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  text-decoration: none;
+  display: block;
+  color: #2d3748;
+}
+
+#kr-search-results .kr-result-item:hover {
+  background: #f0f4ff;
+}
+
+#kr-search-results .kr-result-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #1e293b;
+  margin-bottom: 0.2rem;
+}
+
+#kr-search-results .kr-result-doc {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+#kr-search-results .kr-result-preview {
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+  margin-top: 0.2rem;
+}
+
+#kr-search-results .kr-result-preview mark {
+  background: #fef08a;
+  color: #1e293b;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+#kr-search-results .kr-no-result {
+  padding: 1rem;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var searchData = null;
+
+  function loadSearchData(cb) {
+    if (searchData) return cb(searchData);
+    var base = document.querySelector('link[rel="canonical"]');
+    var baseUrl = '';
+    if (base) {
+      var m = base.href.match(/(.*\/ios-interview-study)/);
+      if (m) baseUrl = m[1];
+    }
+    if (!baseUrl) baseUrl = '/ios-interview-study';
+    fetch(baseUrl + '/assets/js/search-data.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { searchData = data; cb(data); });
+  }
+
+  var input = document.getElementById('search-input');
+  if (!input) return;
+
+  var wrap = input.closest('.search-input-wrap') || input.parentElement;
+  wrap.style.position = 'relative';
+
+  var resultsDiv = document.createElement('div');
+  resultsDiv.id = 'kr-search-results';
+  wrap.appendChild(resultsDiv);
+
+  var origResults = document.getElementById('search-results');
+  if (origResults) origResults.style.display = 'none';
+
+  function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function getPreview(content, query, len) {
+    len = len || 80;
+    var lower = content.toLowerCase();
+    var idx = lower.indexOf(query.toLowerCase());
+    if (idx === -1) return '';
+    var start = Math.max(0, idx - 30);
+    var end = Math.min(content.length, idx + query.length + len);
+    var snippet = (start > 0 ? '...' : '') + content.substring(start, end) + (end < content.length ? '...' : '');
+    var re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    return snippet.replace(re, '<mark>$1</mark>');
+  }
+
+  function doSearch(query) {
+    if (!query || query.length < 1) {
+      resultsDiv.style.display = 'none';
+      return;
+    }
+    loadSearchData(function(data) {
+      var results = [];
+      var q = query.toLowerCase();
+      for (var key in data) {
+        var item = data[key];
+        var title = item.title || '';
+        var content = item.content || '';
+        var titleMatch = title.toLowerCase().indexOf(q) !== -1;
+        var contentMatch = content.toLowerCase().indexOf(q) !== -1;
+        if (titleMatch || contentMatch) {
+          results.push({
+            title: item.title,
+            doc: item.doc,
+            url: item.url,
+            content: item.content,
+            titleMatch: titleMatch,
+            score: titleMatch ? 2 : 1
+          });
+        }
+      }
+      results.sort(function(a, b) { return b.score - a.score; });
+      results = results.slice(0, 15);
+
+      if (results.length === 0) {
+        resultsDiv.innerHTML = '<div class="kr-no-result">검색 결과가 없습니다</div>';
+      } else {
+        var html = '';
+        for (var i = 0; i < results.length; i++) {
+          var r = results[i];
+          var preview = getPreview(r.content, query);
+          html += '<a class="kr-result-item" href="' + r.url + '">';
+          html += '<div class="kr-result-title">' + escapeHtml(r.title) + '</div>';
+          if (r.doc !== r.title) {
+            html += '<div class="kr-result-doc">' + escapeHtml(r.doc) + '</div>';
+          }
+          if (preview) {
+            html += '<div class="kr-result-preview">' + preview + '</div>';
+          }
+          html += '</a>';
+        }
+        resultsDiv.innerHTML = html;
+      }
+      resultsDiv.style.display = 'block';
+    });
+  }
+
+  var timer;
+  input.addEventListener('input', function() {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    timer = setTimeout(function() { doSearch(q); }, 150);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!wrap.contains(e.target)) {
+      resultsDiv.style.display = 'none';
+    }
+  });
+
+  input.addEventListener('focus', function() {
+    if (input.value.trim().length > 0) doSearch(input.value.trim());
+  });
+});
+</script>
