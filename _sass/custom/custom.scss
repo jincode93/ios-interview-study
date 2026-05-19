@@ -121,16 +121,37 @@ figure.highlight {
   border-radius: 8px;
   overflow: hidden;
   margin: 1rem 0;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #1e293b;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 
   pre {
     padding: 1rem 1.25rem;
     margin: 0;
     font-size: 0.82rem;
     line-height: 1.7;
-    background: #f8fafc;
+    background: #1e293b;
+    color: #e2e8f0;
     overflow-x: auto;
+
+    code {
+      background: transparent;
+      color: #e2e8f0;
+      border: none;
+      padding: 0;
+    }
+  }
+
+  // Syntax highlighting for dark background
+  .highlight {
+    .k, .kd, .kn, .kp, .kr, .kt { color: #c792ea; } // keywords
+    .s, .s1, .s2, .sb, .sc, .sd, .sh, .sx { color: #c3e88d; } // strings
+    .n, .na, .nb, .nc, .nd, .ni, .ne, .nf, .nl, .nn, .no, .nt, .nv { color: #82aaff; } // names
+    .c, .c1, .cm, .cp, .cs { color: #697098; font-style: italic; } // comments
+    .m, .mi, .mf, .mh, .mo { color: #f78c6c; } // numbers
+    .o, .ow { color: #89ddff; } // operators
+    .p { color: #e2e8f0; } // punctuation
+    .bp { color: #ffcb6b; } // built-in pseudo
+    .err { color: #ff5370; } // errors
   }
 }
 
