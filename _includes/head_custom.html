@@ -331,33 +331,33 @@ figure.highlight pre code,
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var searchData = null;
+  var baseUrl = '/ios-interview-study';
 
   function loadSearchData(cb) {
     if (searchData) return cb(searchData);
-    var base = document.querySelector('link[rel="canonical"]');
-    var baseUrl = '';
-    if (base) {
-      var m = base.href.match(/(.*\/ios-interview-study)/);
-      if (m) baseUrl = m[1];
-    }
-    if (!baseUrl) baseUrl = '/ios-interview-study';
     fetch(baseUrl + '/assets/js/search-data.json')
       .then(function(r) { return r.json(); })
       .then(function(data) { searchData = data; cb(data); });
   }
 
-  var input = document.getElementById('search-input');
-  if (!input) return;
+  // Replace original search input to kill lunr.js event listeners
+  var origInput = document.getElementById('search-input');
+  if (!origInput) return;
 
-  var wrap = input.closest('.search-input-wrap') || input.parentElement;
+  var newInput = origInput.cloneNode(true);
+  newInput.id = 'kr-search-input';
+  origInput.parentNode.replaceChild(newInput, origInput);
+
+  // Hide original search results
+  var origResults = document.getElementById('search-results');
+  if (origResults) origResults.style.display = 'none';
+
+  var wrap = newInput.closest('.search-input-wrap') || newInput.parentElement;
   wrap.style.position = 'relative';
 
   var resultsDiv = document.createElement('div');
   resultsDiv.id = 'kr-search-results';
   wrap.appendChild(resultsDiv);
-
-  var origResults = document.getElementById('search-results');
-  if (origResults) origResults.style.display = 'none';
 
   function escapeHtml(s) {
     var d = document.createElement('div');
@@ -429,10 +429,18 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   var timer;
-  input.addEventListener('input', function() {
+  newInput.addEventListener('input', function(e) {
+    e.stopPropagation();
     clearTimeout(timer);
-    var q = input.value.trim();
+    var q = newInput.value.trim();
     timer = setTimeout(function() { doSearch(q); }, 150);
+  });
+
+  newInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      resultsDiv.style.display = 'none';
+      newInput.blur();
+    }
   });
 
   document.addEventListener('click', function(e) {
@@ -441,8 +449,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  input.addEventListener('focus', function() {
-    if (input.value.trim().length > 0) doSearch(input.value.trim());
+  newInput.addEventListener('focus', function() {
+    if (newInput.value.trim().length > 0) doSearch(newInput.value.trim());
   });
 });
 </script>
