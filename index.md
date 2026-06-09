@@ -4,7 +4,7 @@ title: 홈
 nav_order: 0
 ---
 
-# iOS 면접 준비 - 질문 & 답변 모음
+# iOS 학습
 
 > 출처: [JeaSungLEE/iOSInterviewquestions](https://github.com/JeaSungLEE/iOSInterviewquestions)
 > 답변은 실제 면접에서 말하듯 작성된 핵심 답변과, 그 아래의 보충 설명으로 구성되어 있습니다.
@@ -13,8 +13,8 @@ nav_order: 0
 
 ## 학습 가이드
 
-- **현재 레벨**: 2년차 iOS 개발자 (저장소 기준 레벨 2)
-- **목표 레벨**: 3년차 이상 이직 (레벨 3)
+- **현재 레벨**: 주니어
+- **목표 레벨**: 미들
 - **학습 우선순위**: 레벨 1~3 → 레벨 0 (기초 다지기) → 레벨 4~5 (참고)
 
 ### 각 문항 구성
