@@ -739,4 +739,354 @@ distributed actor Player {
 
 ---
 
+---
+
+## 16. Thread, Queue, Task의 차이를 설명해주세요. (Lv2)
+
+### 💬 면접 답변
+
+세 개념은 추상화 레벨이 다릅니다. **스레드**는 CPU가 코드를 실행하는 물리적 작업자입니다. **큐(DispatchQueue)** 는 할 일 목록으로, 작업을 받아 스레드 풀에 배분하는 스케줄러 역할을 합니다. 큐와 스레드는 1:1이 아니며, Serial 큐도 실행할 때마다 다른 스레드를 사용할 수 있습니다. **Task**는 Swift Concurrency의 논리적 작업 단위로, `await` 지점에서 스레드를 반납하고(suspend) 나중에 다시 재개되는(resume) 방식으로 동작합니다. Task는 스레드를 블로킹하지 않기 때문에, 하나의 스레드가 여러 Task를 번갈아 처리할 수 있습니다.
+
+### 📚 보충 설명
+
+**스레드(Thread)**
+
+CPU가 코드를 한 줄씩 순서대로 실행하는 실체입니다. 앱이 실행되면 기본적으로 메인 스레드 1개가 생기고, 시간이 걸리는 작업은 보조 스레드(백그라운드 스레드)에서 처리합니다. 스레드를 만들고 유지하는 것 자체가 메모리(기본 512KB/스레드)와 CPU를 소비합니다.
+
+**큐(DispatchQueue)**
+
+작업을 직렬(Serial) 또는 동시(Concurrent) 방식으로 스레드에 배분하는 접수대입니다. Serial 큐는 한 번에 하나씩만 처리하여 순서를 보장하고, Concurrent 큐는 여러 작업을 동시에 처리합니다.
+
+- `sync`: 작업이 끝날 때까지 호출한 스레드를 블로킹
+- `async`: 작업을 큐에 넣고 즉시 반환 (논블로킹)
+
+**Task (Swift Concurrency)**
+
+async/await 세계의 논리적 작업 단위입니다. `await`를 만나면 Task가 suspend되어 스레드를 반납하고, 기다리던 결과가 준비되면 resume되어 스레드를 다시 받아 실행을 이어갑니다. Swift의 cooperative thread pool(CPU 코어 수만큼만 스레드를 유지하는 체계)이 가능한 이유입니다.
+
+| 개념 | 역할 | 특징 |
+|---|---|---|
+| Thread | 코드를 실제 실행하는 물리적 작업자 | OS가 관리, 생성 비용 있음 |
+| DispatchQueue | 작업을 스레드에 배분하는 스케줄러 | sync(블로킹) / async(논블로킹) |
+| Task | async/await의 논리적 작업 단위 | await에서 스레드 반납 후 재개 |
+
+### 🔗 참고 자료
+- [Apple - Concurrency (Swift book)](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/)
+- [WWDC 2021 - Swift concurrency: Behind the scenes](https://developer.apple.com/videos/play/wwdc2021/10254/)
+
+---
+
+## 17. actor가 data race를 방지하는 원리를 설명해주세요. (Lv3)
+
+### 💬 면접 답변
+
+actor는 내부적으로 **Serial Executor(직렬 실행기)** 를 가지고 있어, 자신의 상태에 대한 접근을 직렬화합니다. 외부에서 actor의 메서드나 프로퍼티에 접근하려면 반드시 `await`을 사용해야 하고, Swift 컴파일러가 이를 강제합니다. 이 덕분에 동시에 여러 Task가 actor 내부 상태를 읽거나 쓰는 것이 원천적으로 불가능합니다. NSLock이나 DispatchQueue와 달리 잠금을 잘못 걸 여지가 없고, 컴파일 에러로 실수를 조기에 발견할 수 있습니다.
+
+### 📚 보충 설명
+
+**Serial Executor 동작 원리**
+
+5개의 Task가 동시에 actor 메서드를 호출하면, executor가 이를 큐에 줄 세워 하나씩만 처리합니다. 두 번째 Task는 첫 번째가 끝날 때까지 대기합니다. 이 대기는 스레드 블로킹이 아니라 Task suspend로 처리되므로, 스레드는 다른 Task를 처리할 수 있습니다.
+
+**GCD와의 핵심 차이**
+
+| | actor | DispatchQueue (serial) |
+|---|---|---|
+| 안전 강제 방식 | 컴파일러 (await 없으면 에러) | 개발자 직접 관리 |
+| 잘못 쓰면 | 컴파일 에러 | 런타임 크래시 or 무증상 버그 |
+| 대기 방식 | Task suspend (스레드 반납) | sync면 스레드 블로킹 |
+
+**TokenRefreshService 핵심 패턴**
+
+5개의 API 요청이 동시에 401을 받는 상황에서, actor를 사용하면 첫 번째 Task만 갱신 Task를 생성하고 나머지 4개는 같은 Task의 결과를 기다립니다. `await` 이전에 `activeTask`를 먼저 set하는 것이 핵심입니다.
+
+### 🔗 참고 자료
+- [Swift Evolution: SE-0306 - Actors](https://github.com/apple/swift-evolution/blob/main/proposals/0306-actors.md)
+- [WWDC 2021 - Protect mutable state with Swift actors](https://developer.apple.com/videos/play/wwdc2021/10133/)
+
+---
+
+## 18. actor의 Reentrancy란 무엇이고, 어떻게 대응하나요? (Lv3)
+
+### 💬 면접 답변
+
+**Reentrancy(재진입)** 란, actor 내부에서 `await`을 만나 Task가 suspend(스레드를 반납하고 일시 중단)되는 순간 다른 Task가 actor에 진입할 수 있는 특성입니다. Swift의 actor는 기본적으로 reentrant하기 때문에, `await` 전후로 actor 내부 상태가 다른 Task에 의해 변경될 수 있습니다. 이를 방지하는 핵심 원칙은 **상태 변경을 await 이전에 배치**하는 것입니다. await 전에 상태를 확정지어두면, suspend 이후 진입한 Task도 올바른 상태를 보게 됩니다.
+
+### 📚 보충 설명
+
+**TokenRefreshService에서의 해결 전략**
+
+```swift
+actor TokenRefreshService {
+    private var activeTask: Task<String, Error>?
+
+    func refreshIfNeeded() async throws -> String {
+        if let task = activeTask {
+            return try await task.value  // 기존 갱신 완료 대기
+        }
+        // await 이전에 상태를 먼저 확정
+        let task = Task { try await fetchNewToken() }
+        activeTask = task                // ← await 전에 set
+        defer { activeTask = nil }
+        return try await task.value      // ← 여기서 suspend 가능
+    }
+}
+```
+
+await 이전에 `activeTask`를 set했기 때문에, suspend 이후 진입한 Task도 "이미 갱신 중"을 인식하고 중복 갱신을 하지 않습니다.
+
+**Reentrancy 방지 대안 방법들**
+
+| 방법 | 구현 난이도 | 안전성 | 적합한 상황 |
+|---|---|---|---|
+| await 전 상태 확정 | 낮음 | 충분함 | 대부분의 중복 실행 방지 |
+| Continuation 큐 | 높음 | 완전함 | 순서·격리가 엄격히 필요한 경우 |
+| AsyncChannel | 중간 | 완전함 | 요청량이 많고 흐름 제어 필요 |
+
+**Continuation 큐 방식:** 진행 중인 작업이 있으면 새 Task를 실행하지 않고 `withCheckedContinuation`으로 만든 "재개 티켓"을 대기열에 저장합니다. 기존 작업이 끝나면 대기 티켓을 전부 꺼내 결과를 전달합니다. 완전하지만 구현이 복잡하고 Continuation 누수 위험이 있습니다.
+
+### 🔗 참고 자료
+- [Swift Evolution: SE-0306 - Actors (Reentrancy 섹션)](https://github.com/apple/swift-evolution/blob/main/proposals/0306-actors.md)
+
+---
+
+## 19. @MainActor는 일반 actor와 무엇이 다른가요? (Lv3)
+
+### 💬 면접 답변
+
+`@MainActor`는 앱 전체에 단 하나 존재하는 **글로벌 actor**로, executor가 메인 스레드에 고정되어 있습니다. 일반 actor는 작업이 들어올 때마다 Swift의 cooperative thread pool에서 임의의 스레드를 할당받아 실행되지만, `@MainActor`는 항상 메인 스레드에서만 실행됩니다. 또한 일반 actor는 인스턴스마다 독립적인 executor를 가지지만, `@MainActor`는 앱 전체에서 하나의 executor를 공유합니다.
+
+### 📚 보충 설명
+
+**Executor(실행기)란?**
+
+actor가 받은 작업을 실제로 어떤 스레드에서 실행할지 결정하는 스케줄러입니다. actor가 "줄 세우는 규칙"이라면, executor는 "그 줄을 어느 창구에서 처리할지"를 결정합니다.
+
+| | 일반 actor | @MainActor |
+|---|---|---|
+| 실행 스레드 | cooperative thread pool의 임의 스레드 | 항상 Main Thread |
+| 인스턴스 수 | 각 인스턴스마다 별도 executor | 앱 전체에 단 하나 |
+| 주 용도 | 백그라운드 상태 보호 | UI 상태 보호 |
+
+**메인 스레드로 전환하는 방법**
+
+```swift
+// 방법 1: await MainActor.run
+Task {
+    let data = await fetchData()
+    await MainActor.run {
+        self.label.text = data
+    }
+}
+
+// 방법 2: @MainActor 함수 await 호출
+@MainActor func updateUI(with data: String) {
+    label.text = data
+}
+```
+
+백그라운드 Task에서 `@MainActor` 함수를 `await`으로 호출하면, 현재 Task가 suspend되고 메인 스레드 executor 큐에 작업이 enqueue됩니다.
+
+### 🔗 참고 자료
+- [Swift Evolution: SE-0316 - Global Actors](https://github.com/apple/swift-evolution/blob/main/proposals/0316-global-actors.md)
+- [WWDC 2021 - Swift concurrency: Update a sample app](https://developer.apple.com/videos/play/wwdc2021/10194/)
+
+---
+
+## 20. iOS의 동기화 도구들을 비교해주세요. (NSLock, os_unfair_lock, Mutex, actor 등) (Lv3)
+
+### 💬 면접 답변
+
+iOS에서 공유 상태를 보호하는 도구는 추상화 수준과 성능 특성이 다릅니다. **NSLock**은 pthread_mutex를 래핑한 범용 잠금으로, 경합 시 스레드를 블로킹하고 커널 컨텍스트 스위칭이 발생합니다. **os_unfair_lock**은 atomic 연산 기반의 저수준 잠금으로 가장 빠르지만 Swift에서 직접 쓰기 불편하고, **OSAllocatedUnfairLock(iOS 16+)** 또는 **Mutex(Swift 6)** 가 안전한 래퍼입니다. **actor**는 컴파일러가 안전성을 강제하고 스레드를 블로킹하지 않으며, async 환경에서 가장 권장되는 방식입니다.
+
+### 📚 보충 설명
+
+**잠금 계열**
+
+| 도구 | 특징 | 적합한 상황 |
+|---|---|---|
+| NSLock | pthread_mutex 래핑, 커널 개입 | 레거시, 가독성 우선 |
+| NSRecursiveLock | 같은 스레드의 중복 lock 허용 | 재귀 호출 구간 |
+| NSCondition | 조건 만족 시 신호 전달 | 생산자-소비자 패턴 |
+| os_unfair_lock | atomic 기반, 1~5ns, 우선순위 역전 방지 | 성능 극한, 짧은 임계구역 |
+| OSAllocatedUnfairLock | os_unfair_lock의 Swift 안전 래퍼 (iOS 16+) | Swift 코드에서 고성능 잠금 |
+| Mutex (Swift 6) | 표준 라이브러리 공식 Mutex | Swift 6 이상 신규 코드 |
+
+**신호/원자 계열**
+
+| 도구 | 특징 | 적합한 상황 |
+|---|---|---|
+| DispatchSemaphore | 카운팅 신호, 동시 진입 수 제한 | 최대 N개 동시 실행 제어 |
+| pthread_rwlock | 다중 읽기 허용, 쓰기만 단독 | 읽기 많고 쓰기 드문 데이터 |
+| Swift Atomics | 락-프리 원자 연산 | 단순 카운터·플래그 |
+
+**성능 비교 (uncontended 기준)**
+
+| 도구 | 대략적 호출 비용 | 경합 시 |
+|---|---|---|
+| os_unfair_lock | 1~5ns | 스레드 블로킹 |
+| NSLock | 20~50ns | 스레드 블로킹 + 커널 개입 |
+| DispatchQueue.async | 50~200ns | thread explosion 위험 |
+| actor | 100~200ns | Task suspend (스레드 반납) |
+
+단순 호출 비용은 os_unfair_lock이 가장 낮지만, 경합이 많아질수록 actor가 스레드를 낭비하지 않아 **시스템 전체 처리량**이 더 높아집니다. 성능 병목이 확인된 경우에만 프로파일링 후 교체하는 것이 원칙입니다.
+
+**Swift Concurrency에서의 주의사항**
+
+잠금을 쥔 채로 `await`을 만나면 위험합니다. suspend된 사이 다른 스레드가 같은 잠금을 획득하려다 데드락이 발생할 수 있습니다. async 코드와 잠금을 섞는다면 잠금 구간을 아주 좁게, await 없이 유지해야 합니다.
+
+### 🔗 참고 자료
+- [Apple - OSAllocatedUnfairLock](https://developer.apple.com/documentation/os/osallocatedunfairlock)
+- [Swift Evolution: SE-0433 - Synchronization Module (Mutex)](https://github.com/apple/swift-evolution/blob/main/proposals/0433-mutex.md)
+- [Swift Atomics GitHub](https://github.com/apple/swift-atomics)
+
+---
+
+## 21. withThrowingTaskGroup으로 병렬 작업의 결과 순서를 보존하는 방법은? (Lv3)
+
+### 💬 면접 답변
+
+`withThrowingTaskGroup`은 Task가 완료되는 순서대로 결과를 반환하기 때문에, 원본 순서와 다를 수 있습니다. **각 Task를 추가할 때 원본 배열의 인덱스를 함께 튜플로 넘기고**, 결과를 `(index, result)` 쌍으로 수집한 뒤 인덱스 기준으로 정렬하면 원래 순서를 복원할 수 있습니다. 에러가 하나라도 발생하면 그룹 전체가 취소되고 에러가 던져지므로, 부분 실패를 허용하려면 각 Task의 반환 타입을 `Result<T, Error>`로 감싸서 `withTaskGroup`(non-throwing)을 사용하면 됩니다.
+
+### 📚 보충 설명
+
+**순서 보존 패턴**
+
+```swift
+func uploadFiles(_ files: [File]) async throws -> [UploadResult] {
+    try await withThrowingTaskGroup(of: (Int, UploadResult).self) { group in
+        for (index, file) in files.enumerated() {
+            group.addTask {
+                let result = try await upload(file)
+                return (index, result)   // 인덱스를 함께 반환
+            }
+        }
+        var results = [(Int, UploadResult)]()
+        for try await pair in group {
+            results.append(pair)
+        }
+        return results
+            .sorted { $0.0 < $1.0 }     // 인덱스 기준 정렬
+            .map { $0.1 }
+    }
+}
+```
+
+**withTaskGroup vs withThrowingTaskGroup**
+
+| | withTaskGroup | withThrowingTaskGroup |
+|---|---|---|
+| 에러 처리 | 각 Task가 에러를 던질 수 없음 | 각 Task가 throws 가능 |
+| 에러 발생 시 | 해당 없음 | 나머지 Task 취소 후 에러 전파 |
+| 부분 실패 허용 | Result 타입으로 감싸서 사용 | 기본 불가 (Result 래핑 필요) |
+
+**에러 발생 시 내부 동작**
+
+그룹 내 어느 Task 하나라도 에러를 던지는 순간, 그룹이 나머지 모든 Task에 취소 신호를 보내고 해당 에러를 호출부로 전파합니다. 취소는 협력적(cooperative, 강제 종료가 아니라 Task 스스로 취소 여부를 확인하고 멈추는 방식)으로 이루어집니다.
+
+### 🔗 참고 자료
+- [Apple - withThrowingTaskGroup](https://developer.apple.com/documentation/swift/withthrowingtaskgroup(of:returning:body:))
+- [WWDC 2021 - Explore structured concurrency in Swift](https://developer.apple.com/videos/play/wwdc2021/10134/)
+
+---
+
+## 22. Structured Concurrency가 GCD 대비 갖는 이점은 무엇인가요? (Lv3)
+
+### 💬 면접 답변
+
+**구조적 동시성(Structured Concurrency)** 이란 Task의 생명주기가 코드 블록의 범위(scope)에 묶여있는 것을 의미합니다. `withThrowingTaskGroup` 블록이 끝나면 그 안에서 만들어진 모든 Task가 반드시 완료되거나 취소됩니다. 핵심 이점은 세 가지입니다. 첫째, **취소 전파가 자동**입니다. 부모 Task가 취소되면 자식 Task도 자동으로 취소 신호를 받습니다. 둘째, **에러 전파가 명확**합니다. 자식 Task의 에러가 `try await`을 통해 부모로 자연스럽게 전달됩니다. 셋째, **리소스 누수가 없습니다.** 블록이 끝나는 시점에 모든 자식 Task가 정리됩니다.
+
+### 📚 보충 설명
+
+**GCD의 비구조적 문제**
+
+`DispatchQueue.async`로 던진 작업은 언제 끝나는지, 에러가 났는지 추적하려면 콜백, 플래그, 세마포어 등을 직접 관리해야 합니다. 작업이 살아있는 동안 관련 객체도 메모리에 유지해야 하며, 이를 깜빡하면 크래시나 메모리 누수가 발생합니다.
+
+| 특성 | GCD | Structured Concurrency |
+|---|---|---|
+| 취소 전파 | 수동 (OperationQueue, 플래그) | 자동 (부모 → 자식) |
+| 에러 전파 | 콜백·외부 변수 필요 | try await으로 자연 전파 |
+| 리소스 정리 | 개발자가 추적 | 블록 종료 시 자동 보장 |
+| Task 누출 | 가능 | 구조적으로 불가 |
+
+### 🔗 참고 자료
+- [Swift Evolution: SE-0304 - Structured Concurrency](https://github.com/apple/swift-evolution/blob/main/proposals/0304-structured-concurrency.md)
+- [WWDC 2021 - Explore structured concurrency in Swift](https://developer.apple.com/videos/play/wwdc2021/10134/)
+
+---
+
+## 23. Task 취소 메커니즘을 설명해주세요. (Task.isCancelled, CancellationError) (Lv3)
+
+### 💬 면접 답변
+
+Task 취소는 **협력적(cooperative) 메커니즘**입니다. 취소 신호가 오면 Task의 내부 취소 플래그가 `true`로 설정됩니다. Task 스스로 `Task.isCancelled`를 확인하거나 `try Task.checkCancellation()`을 호출해 `CancellationError`를 던지는 방식으로 취소에 응답합니다. 강제 종료가 아니라 Task 스스로 안전한 시점에 멈추기 때문에, 파일 핸들 닫기나 네트워크 연결 해제 같은 리소스 정리를 안전하게 할 수 있습니다. 취소는 부모에서 자식 Task로 전파되지만, 반대 방향(자식 → 부모)은 전파되지 않습니다.
+
+### 📚 보충 설명
+
+**두 가지 확인 방법의 차이**
+
+`Task.isCancelled`는 취소 여부를 `Bool`로 반환합니다. 취소됐을 때 에러를 던지지 않고 부분 결과를 반환하거나 조용히 종료하고 싶을 때 씁니다.
+
+`try Task.checkCancellation()`은 취소됐을 때 즉시 `CancellationError`를 던집니다. 취소 시 에러로 처리해야 할 때 씁니다.
+
+Swift의 표준 async API들(`URLSession`, `Task.sleep` 등)은 내부적으로 취소 플래그를 확인해 자동으로 `CancellationError`를 던집니다. 직접 만든 오래 걸리는 함수에서도 중간중간 취소 여부를 확인해야 빠른 취소 반영이 가능합니다.
+
+**CancellationError 구분 처리**
+
+```swift
+do {
+    let result = try await longRunningTask()
+} catch is CancellationError {
+    // 사용자에게 "취소됨" 표시
+} catch {
+    // 실제 에러 처리
+}
+```
+
+취소는 부모 → 자식 방향으로만 전파됩니다. 자식 하나가 취소됐다고 부모 전체가 취소되지는 않습니다.
+
+### 🔗 참고 자료
+- [Apple - Task.isCancelled](https://developer.apple.com/documentation/swift/task/iscancelled-swift.type.property)
+- [Swift Evolution: SE-0304 - Structured Concurrency (Cancellation 섹션)](https://github.com/apple/swift-evolution/blob/main/proposals/0304-structured-concurrency.md)
+
+---
+
+## 24. Swift Concurrency 시대에도 DispatchQueue를 쓰는 이유는 무엇인가요? (Lv2)
+
+### 💬 면접 답변
+
+DispatchQueue가 Task보다 기술적으로 우월해서 쓰는 경우는 사실상 없습니다. 대부분은 세 가지 이유입니다. 첫째, 이미 GCD로 작성된 **레거시 코드베이스**에서 전면 교체가 현실적으로 어렵습니다. 둘째, **Combine의 스케줄러 인터페이스**(`receive(on:)`, `subscribe(on:)`)가 DispatchQueue를 받습니다. 셋째, **서드파티 라이브러리**의 콜백 실행 큐가 DispatchQueue를 요구하는 경우가 있습니다. 새로 작성하는 코드라면 Swift Concurrency를 쓰는 것이 Apple의 권장 방향이고, iOS 15+ 타겟에서는 DispatchQueue를 새로 쓸 이유가 거의 없습니다.
+
+### 📚 보충 설명
+
+**DispatchQueue가 여전히 쓰이는 구체적 상황**
+
+레거시 호환: 기존 GCD 코드를 점진적으로 마이그레이션하는 과정에서 `withCheckedContinuation`으로 GCD 콜백을 async 함수로 감싸는 브릿지 패턴을 씁니다.
+
+Combine 통합: `receive(on: DispatchQueue.main)`, `subscribe(on: DispatchQueue.global())` 같은 스케줄러 지정은 Combine 파이프라인에서 자연스럽게 DispatchQueue를 사용합니다.
+
+런루프 사이클 타이밍 제어: `DispatchQueue.main.async`로 현재 런루프 사이클이 끝난 뒤 UI 업데이트를 예약하는 패턴은 UIKit에서 여전히 쓰입니다.
+
+**GCD → async 마이그레이션 브릿지**
+
+```swift
+func legacyFetch(completion: @escaping (Result<Data, Error>) -> Void) { ... }
+
+func fetch() async throws -> Data {
+    try await withCheckedThrowingContinuation { continuation in
+        legacyFetch { result in
+            continuation.resume(with: result)  // 정확히 한 번만 호출
+        }
+    }
+}
+```
+
+주의: `continuation.resume`은 **정확히 한 번**만 호출해야 합니다. 두 번 호출하면 크래시, 호출하지 않으면 Task가 영원히 suspend됩니다.
+
+### 🔗 참고 자료
+- [WWDC 2021 - Swift concurrency: Update a sample app](https://developer.apple.com/videos/play/wwdc2021/10194/)
+- [Apple - withCheckedContinuation](https://developer.apple.com/documentation/swift/withcheckedcontinuation(function:_:))
+
+---
+
 > Combine의 SwiftUI 결합 패턴은 [06_UIKit_SwiftUI.md](./06_UIKit_SwiftUI.md), 동시성 원리는 [01_CS_Fundamentals.md](./01_CS_Fundamentals.md)를 참고하세요.
