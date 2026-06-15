@@ -1089,4 +1089,142 @@ func fetch() async throws -> Data {
 
 ---
 
+---
+
+## 25. async/await이 컴파일러 레벨에서 어떻게 변환되나요? 기존 콜백과 어떻게 다른가요? (Lv3)
+
+### 💬 면접 답변
+
+`async` 함수는 컴파일러에 의해 **상태 머신(state machine)** 으로 변환됩니다. 각 `await` 지점이 상태 전환 포인트가 되어, 함수가 suspend될 때 현재 지역 변수와 실행 위치를 힙 메모리에 저장합니다. 이후 resume될 때 저장된 상태에서 이어서 실행합니다. 기존 콜백 방식은 클로저가 중첩되면서 스택 프레임이 쌓이고 캡처 리스트가 복잡해지는 반면, async/await은 상태를 힙에 보관하고 스택은 suspend 시점에 해제하므로 스택 오버플로우 위험이 없고 메모리 사용이 예측 가능합니다.
+
+### 📚 보충 설명
+
+**상태 머신 변환 원리**
+
+`await` 2개가 있는 함수는 내부적으로 3단계 상태를 가집니다. 첫 번째 `await` 전, 첫 번째와 두 번째 `await` 사이, 두 번째 `await` 이후입니다. 함수가 suspend될 때 "현재 단계 번호"와 "그 시점의 지역 변수들"을 힙에 저장하고 스택을 비웁니다. resume될 때 저장된 단계부터 다시 시작합니다.
+
+**콜백 방식과의 비교**
+
+| | 콜백(completion handler) | async/await |
+|---|---|---|
+| 코드 구조 | 중첩 클로저 | 선형 코드 |
+| 에러 전파 | 콜백마다 처리 | throws로 자연 전파 |
+| 상태 저장 위치 | 스택 + 클로저 캡처 | 힙 (상태 머신) |
+| 스택 오버플로우 위험 | 중첩 깊을수록 증가 | 없음 |
+| 취소 처리 | 수동 플래그 관리 | Task.isCancelled |
+
+수천 개의 Task가 동시에 suspend 상태로 존재해도 스택이 아닌 힙에 상태를 보관하므로 메모리 효율이 높습니다.
+
+### 🔗 참고 자료
+- [Swift Evolution: SE-0296 - async/await](https://github.com/apple/swift-evolution/blob/main/proposals/0296-async-await.md)
+- [WWDC 2021 - Swift concurrency: Behind the scenes](https://developer.apple.com/videos/play/wwdc2021/10254/)
+
+---
+
+## 26. Continuation이란 무엇이고, withCheckedContinuation은 언제 쓰나요? (Lv3)
+
+### 💬 면접 답변
+
+**Continuation(연속)** 이란 "지금 이 지점 이후에 실행될 나머지 코드 전체"를 하나의 값으로 캡처한 것입니다. async 함수가 suspend될 때 런타임은 "재개될 때 어디서부터 무엇을 실행해야 하는지"를 continuation 객체로 저장합니다. `withCheckedContinuation`은 콜백 기반의 레거시 API를 async 함수로 감쌀 때 씁니다. 콜백 안에서 `continuation.resume(returning:)` 또는 `continuation.resume(throwing:)`을 호출하면 suspended Task가 그 시점에 resume됩니다. "Checked"라는 이름은 resume이 정확히 한 번 호출됐는지를 런타임이 검사한다는 의미입니다.
+
+### 📚 보충 설명
+
+**Continuation 비유**
+
+영화를 일시정지하면 TV가 "몇 분 몇 초에서 멈췄는지"를 기억합니다. 나중에 재생하면 정확히 그 지점부터 이어집니다. Continuation이 바로 이 "멈춘 지점 정보"입니다.
+
+**withCheckedContinuation 사용 패턴**
+
+```swift
+// 콜백 기반 레거시 API
+func legacyFetch(completion: @escaping (Result<Data, Error>) -> Void) { ... }
+
+// async 래퍼
+func fetch() async throws -> Data {
+    try await withCheckedThrowingContinuation { continuation in
+        legacyFetch { result in
+            continuation.resume(with: result)  // 정확히 한 번만 호출
+        }
+    }
+}
+```
+
+**Checked vs Unsafe 버전**
+
+| | withCheckedContinuation | withUnsafeContinuation |
+|---|---|---|
+| resume 횟수 검사 | 런타임이 감시 | 검사 없음 |
+| 위반 시 | 경고/크래시 | 미정의 동작 |
+| 성능 | 약간의 오버헤드 | 더 빠름 |
+| 권장 상황 | 일반적인 사용 | 성능이 극히 중요한 구간 |
+
+**주의사항**
+
+`continuation.resume`은 **정확히 한 번**만 호출해야 합니다. 한 번도 안 부르면 Task가 영원히 suspend 상태로 메모리에 남습니다. 두 번 부르면 크래시가 납니다.
+
+### 🔗 참고 자료
+- [Apple - withCheckedContinuation](https://developer.apple.com/documentation/swift/withcheckedcontinuation(function:_:))
+- [Swift Evolution: SE-0300 - Continuations](https://github.com/apple/swift-evolution/blob/main/proposals/0300-continuation.md)
+
+---
+
+## 27. Swift Concurrency의 cooperative thread pool은 몇 개의 스레드를 사용하고, 왜 그 수로 제한하나요? (Lv3)
+
+### 💬 면접 답변
+
+Swift의 cooperative thread pool은 기본적으로 **CPU 활성 코어 수**만큼만 스레드를 생성합니다. 제한하는 이유는 **컨텍스트 스위칭 비용**을 없애기 위해서입니다. 스레드가 코어 수보다 많아지면 OS가 스레드를 번갈아 실행하면서 컨텍스트 스위칭(현재 스레드 상태를 저장하고 다른 스레드로 전환하는 작업)이 발생하고, 이 비용이 누적되면 오히려 성능이 떨어집니다. Task는 `await` 지점에서 스레드를 반납하기 때문에, 스레드 수가 코어 수와 같아도 수천 개의 Task를 효율적으로 처리할 수 있습니다.
+
+### 📚 보충 설명
+
+**GCD와의 비교**
+
+GCD에서는 작업이 블로킹되면 OS가 새 스레드를 생성해 대응합니다. 이것이 반복되면 스레드가 수십~수백 개로 불어나는 thread explosion이 발생합니다. 스레드 하나당 512KB 스택이 소비되므로 메모리 낭비도 심해집니다.
+
+Swift Concurrency는 Task가 블로킹 없이 `await`으로 스레드를 반납하기 때문에, 코어 수만큼의 스레드로 충분합니다.
+
+| | GCD | Swift Concurrency |
+|---|---|---|
+| 스레드 수 | 작업 증가 시 동적으로 증가 | CPU 코어 수로 고정 |
+| 블로킹 대기 | 스레드가 잠들어 낭비 | Task suspend, 스레드 반납 |
+| 컨텍스트 스위칭 | 스레드 많을수록 증가 | 최소화 |
+
+**Thread pool 고갈 주의**
+
+async 코드 안에서 `DispatchSemaphore.wait()`이나 `NSLock.lock()`처럼 스레드를 블로킹하는 코드를 쓰면, cooperative thread pool의 스레드가 잠들어 버립니다. 나머지 Task들이 실행될 스레드가 없어지는 **thread pool 고갈** 문제가 발생합니다. async 환경에서 블로킹 API를 피해야 하는 이유입니다.
+
+### 🔗 참고 자료
+- [WWDC 2021 - Swift concurrency: Behind the scenes](https://developer.apple.com/videos/play/wwdc2021/10254/)
+
+---
+
+## 28. async 함수가 suspend되는 시점은 정확히 언제인가요? (Lv3)
+
+### 💬 면접 답변
+
+async 함수는 `await` 키워드를 만났다고 해서 항상 suspend되지는 않습니다. **실제로 기다릴 필요가 있을 때만** suspend됩니다. 구체적으로 세 가지 시점입니다. 첫째, `await`으로 호출한 async 함수가 즉시 결과를 반환할 수 없을 때입니다. 둘째, actor의 executor가 현재 다른 작업을 처리 중이어서 진입을 기다려야 할 때입니다. 셋째, 현재 컨텍스트와 호출 대상의 컨텍스트가 달라 전환이 필요할 때(예: 일반 Task에서 `@MainActor` 함수 호출)입니다. 결과가 이미 준비되어 있다면 `await`이 있어도 suspend 없이 바로 실행을 이어갑니다.
+
+### 📚 보충 설명
+
+**`await`은 "멈출 수도 있다"는 표시**
+
+`await`은 무조건 suspend되는 명령이 아니라, 런타임에게 "여기서 suspend해도 된다"는 허가를 주는 것입니다. 실제로 멈출지는 런타임이 결정합니다.
+
+**세 가지 suspend 시점 상세**
+
+결과가 아직 없을 때: 네트워크 응답처럼 시간이 걸리는 작업을 `await`하면 응답이 올 때까지 suspend됩니다. 반면 캐시에 결과가 있어 즉시 반환 가능하다면 suspend 없이 진행됩니다.
+
+actor 진입 대기: 다른 actor의 메서드를 `await`으로 호출할 때, 해당 actor가 현재 다른 Task를 처리 중이면 suspend됩니다. actor가 비어있으면 바로 진입하므로 suspend되지 않습니다.
+
+컨텍스트 전환: 일반 Task에서 `@MainActor` 함수를 `await`하면 메인 스레드로 전환하는 과정에서 suspend됩니다.
+
+**suspend는 비용**
+
+상태를 힙에 저장하고, 스케줄링하고, resume하는 과정이 필요합니다. Swift 런타임이 "정말 기다릴 필요가 있을 때만" suspend하도록 최적화하는 이유이며, 개발자도 불필요한 `await`을 남발하지 않는 것이 좋습니다.
+
+### 🔗 참고 자료
+- [Swift Evolution: SE-0296 - async/await](https://github.com/apple/swift-evolution/blob/main/proposals/0296-async-await.md)
+- [WWDC 2021 - Swift concurrency: Behind the scenes](https://developer.apple.com/videos/play/wwdc2021/10254/)
+
+---
+
 > Combine의 SwiftUI 결합 패턴은 [06_UIKit_SwiftUI.md](./06_UIKit_SwiftUI.md), 동시성 원리는 [01_CS_Fundamentals.md](./01_CS_Fundamentals.md)를 참고하세요.
