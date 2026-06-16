@@ -269,3 +269,187 @@ adapt() 실행    →    서버 응답    →    retry() 실행
 - [Alamofire - RequestInterceptor](https://github.com/Alamofire/Alamofire/blob/master/Documentation/AdvancedUsage.md#requestinterceptor)
 
 ---
+
+## 8. UICollectionView 기반 PagerView 구현 (Lv2)
+
+> "SwiftUIPager 라이브러리 대신 UICollectionView 기반 PagerView를 직접 구현하셨는데, 어떤 UICollectionView 기능을 활용하셨나요? 인피니트 스크롤은 어떻게 구현했나요?"
+
+### 💬 면접 답변
+
+`UICollectionViewFlowLayout`으로 셀 크기와 간격을 설정하고, `UICollectionView`(UIScrollView)의 `isPagingEnabled = true`로 페이지 단위 스크롤을 구현했습니다. 인피니트 스크롤은 **데이터 복제** 방식으로 구현했습니다. 원본 아이템이 N개라면 앞뒤에 복제본을 붙여 N+2개의 배열을 만들고, 첫 번째/마지막 복제본에 도달하면 애니메이션 없이 대응되는 실제 위치로 순간 이동(scroll without animation)시킵니다. 사용자는 이 전환을 인지하지 못하므로 무한히 스크롤하는 것처럼 느낍니다.
+
+### 📚 보충 설명
+
+**UICollectionView의 두 레이어**
+
+`isPagingEnabled`와 `UICollectionViewFlowLayout`은 상충하지 않습니다. 역할이 완전히 다른 두 레이어입니다.
+
+```
+UIScrollView
+  └── UICollectionView   ← isPagingEnabled 여기 있음 (스크롤 snap 담당)
+        └── UICollectionViewFlowLayout  ← itemSize, spacing 여기 있음 (셀 배치 담당)
+```
+
+```swift
+let layout = UICollectionViewFlowLayout()
+layout.scrollDirection = .horizontal
+layout.itemSize = CGSize(width: view.bounds.width, height: view.bounds.height)
+layout.minimumLineSpacing = 0
+
+collectionView.isPagingEnabled = true
+```
+
+**데이터 복제 방식 인피니트 스크롤**
+
+```
+원본: [A, B, C]
+복제: [C, A, B, C, A]  ← 앞뒤에 복사본 추가
+```
+
+```swift
+func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+    let page = Int(scrollView.contentOffset.x / scrollView.frame.width)
+
+    if page == 0 {
+        collectionView.scrollToItem(
+            at: IndexPath(item: items.count, section: 0),
+            at: .centeredHorizontally,
+            animated: false
+        )
+    } else if page == items.count + 1 {
+        collectionView.scrollToItem(
+            at: IndexPath(item: 1, section: 0),
+            at: .centeredHorizontally,
+            animated: false
+        )
+    }
+}
+```
+
+**라이브러리 대신 직접 구현한 이유**
+
+SwiftUIPager는 SwiftUI 전용이라 UIKit 화면에서 `UIViewRepresentable`로 래핑하면 Safe Area 처리와 터치 이벤트 전달에서 예측 불가한 이슈가 발생했습니다. 직접 구현하면 셀 재사용, 레이아웃, 터치 처리를 완전히 제어할 수 있어 16개 영역에 안정적으로 적용할 수 있었습니다.
+
+### 🔗 참고 자료
+- [Apple - UICollectionViewFlowLayout](https://developer.apple.com/documentation/uikit/uicollectionviewflowlayout)
+- [Apple - UIScrollView.isPagingEnabled](https://developer.apple.com/documentation/uikit/uiscrollview/1619432-ispagingenabled)
+
+---
+
+## 9. FlowLayout vs 커스텀 UICollectionViewLayout (Lv2)
+
+> "`UICollectionViewFlowLayout`과 커스텀 `UICollectionViewLayout`의 차이는 무엇인가요?"
+
+### 💬 면접 답변
+
+`UICollectionViewFlowLayout`은 Apple이 제공하는 선형(줄 기반) 레이아웃으로, 수평/수직 방향의 그리드나 목록에 적합합니다. 커스텀 `UICollectionViewLayout`은 `UICollectionViewLayout`을 직접 서브클래싱해서 셀의 위치와 크기를 완전히 직접 계산합니다. Pinterest 스타일 폭포수, 원형 배치, 카드 스택 등 FlowLayout으로 표현할 수 없는 레이아웃이 필요할 때 씁니다.
+
+### 📚 보충 설명
+
+**커스텀 Layout에서 반드시 구현해야 하는 메서드**
+
+```swift
+class MyCustomLayout: UICollectionViewLayout {
+    override var collectionViewContentSize: CGSize { ... }
+    override func prepare() { ... }
+    override func layoutAttributesForElements(in rect: CGRect)
+        -> [UICollectionViewLayoutAttributes]? { ... }
+    override func layoutAttributesForItem(at indexPath: IndexPath)
+        -> UICollectionViewLayoutAttributes? { ... }
+}
+```
+
+PagerView는 셀 크기 = 화면 크기인 단순 구조이므로 FlowLayout으로 충분합니다.
+
+### 🔗 참고 자료
+- [Apple - UICollectionViewLayout](https://developer.apple.com/documentation/uikit/uicollectionviewlayout)
+
+---
+
+## 10. 셀 재사용(Reuse) 메커니즘 (Lv2)
+
+> "셀 재사용(reuse) 메커니즘이 내부적으로 어떻게 동작하나요?"
+
+### 💬 면접 답변
+
+UICollectionView는 화면에 보이는 셀만 메모리에 유지하고, 화면 밖으로 나간 셀을 즉시 해제하지 않고 **reuse queue**에 보관합니다. `dequeueReusableCell`을 호출하면 큐에 셀이 있으면 꺼내 반환하고, 없으면 새로 생성합니다. 아이템이 1,000개여도 셀 객체는 10~20개 수준만 메모리에 존재합니다.
+
+### 📚 보충 설명
+
+**prepareForReuse()의 역할**
+
+셀이 queue에서 꺼내지기 직전에 호출됩니다. 이전 데이터가 남아있으면 깜빡임이 생기므로 여기서 초기화합니다.
+
+```swift
+override func prepareForReuse() {
+    super.prepareForReuse()
+    imageView.image = nil
+    imageView.kf.cancelDownloadTask()
+    titleLabel.text = nil
+}
+```
+
+**PagerView에서 인덱스 변환**
+
+```swift
+func collectionView(_ collectionView: UICollectionView,
+                    cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+    let cell = collectionView.dequeueReusableCell(...)
+    let realIndex = (indexPath.item - 1 + items.count) % items.count
+    cell.configure(with: items[realIndex])
+    return cell
+}
+```
+
+### 🔗 참고 자료
+- [Apple - UICollectionView](https://developer.apple.com/documentation/uikit/uicollectionview)
+
+---
+
+## 11. 페이지 Snap 구현 방법 (Lv3)
+
+> "페이지 전환 시 정확한 페이지에 snap되도록 하려면 어떤 방법이 있나요?"
+
+### 💬 면접 답변
+
+두 가지 방법이 있습니다. `isPagingEnabled = true`는 셀 크기가 화면 크기와 정확히 일치할 때만 완벽하게 동작합니다. 여백이나 간격이 있거나 셀이 화면보다 작은 carousel 형태라면 `targetContentOffset(forProposedContentOffset:withScrollingVelocity:)`를 직접 구현해 snap 위치를 계산해야 합니다.
+
+### 📚 보충 설명
+
+**targetContentOffset 직접 계산**
+
+```swift
+override func targetContentOffset(
+    forProposedContentOffset proposedContentOffset: CGPoint,
+    withScrollingVelocity velocity: CGPoint
+) -> CGPoint {
+    let targetRect = CGRect(
+        x: proposedContentOffset.x, y: 0,
+        width: collectionView!.bounds.width,
+        height: collectionView!.bounds.height
+    )
+    guard let attributes = layoutAttributesForElements(in: targetRect) else {
+        return proposedContentOffset
+    }
+    let centerX = proposedContentOffset.x + collectionView!.bounds.width / 2
+    let closest = attributes.min {
+        abs($0.center.x - centerX) < abs($1.center.x - centerX)
+    }
+    return CGPoint(x: closest?.frame.origin.x ?? proposedContentOffset.x,
+                   y: proposedContentOffset.y)
+}
+```
+
+**두 방법 비교**
+
+| | isPagingEnabled | targetContentOffset |
+|---|---|---|
+| 구현 난이도 | 한 줄 | 직접 계산 필요 |
+| 셀 크기 = 화면 크기 | 완벽 동작 | 사용 가능 |
+| 여백/간격 있을 때 | snap 어긋남 | 정확 |
+| Carousel (양옆 셀 살짝 보임) | 부적합 | 적합 |
+
+### 🔗 참고 자료
+- [Apple - targetContentOffset(forProposedContentOffset:withScrollingVelocity:)](https://developer.apple.com/documentation/uikit/uicollectionviewlayout/1617729-targetcontentoffset)
+
+---
